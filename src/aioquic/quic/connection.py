@@ -834,7 +834,8 @@ class QuicConnection:
                     destination_cid_seq = connection_id.sequence_number
                     break
             if (
-                self._is_client or header.packet_type == QuicPacketType.HANDSHAKE
+                self._is_client
+                or header.packet_type in (QuicPacketType.HANDSHAKE, QuicPacketType.ONE_RTT)
             ) and destination_cid_seq is None:
                 if self._quic_logger is not None:
                     self._quic_logger.log_event(
@@ -883,9 +884,17 @@ class QuicConnection:
 
             # Server initialization.
             if not self._is_client and self._state == QuicConnectionState.FIRSTFLIGHT:
-                assert header.packet_type == QuicPacketType.INITIAL, (
-                    "first packet must be INITIAL"
-                )
+                if header.packet_type != QuicPacketType.INITIAL:
+                    if self._quic_logger is not None:
+                        self._quic_logger.log_event(
+                            category="transport",
+                            event="packet_dropped",
+                            data={
+                                "trigger": "unexpected_packet_type",
+                                "raw": {"length": header.packet_length},
+                            },
+                        )
+                    return
                 crypto_frame_required = True
                 self._network_paths = [network_path]
                 self._version = header.version
